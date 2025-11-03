@@ -21,7 +21,7 @@ export function buildComposePrompt(figure: PoliticalFigure, gender?: FriendGende
       `RESTRIÇÃO CRÍTICA (Lula): Lula deve aparecer como SEGUNDA pessoa distinta, ` +
       `ao lado/abraçando a pessoa da foto. NÃO transforme a pessoa da foto em Lula. ` +
       `NÃO misture traços do Lula no rosto da pessoa da foto. Evite qualquer fusão ` +
-      `de identidades. A pessoa da foto mantém 100% da sua fisionomia original. `
+      `de identidades. A pessoa da foto mantém 100% da sua fisionomia original. ` +
       `Lula pode ter barba grisalha curta, cabelo grisalho curto, traços e idade coerentes, ` +
       `mas esses traços NÃO devem migrar para a pessoa da foto. `
     ) : "";

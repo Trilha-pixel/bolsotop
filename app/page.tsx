@@ -138,10 +138,20 @@ export default function Home() {
                 </select>
               </div>
               <div className="flex gap-3 pt-4">
-                <Button variant="default" disabled={!image || !friendGender || !sceneKey} onClick={() => handleGenerateLLM('bolsonaro')}>
+                <Button 
+                  variant="default" 
+                  disabled={!image || !friendGender || !sceneKey} 
+                  onClick={() => handleGenerateLLM('bolsonaro')}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg text-lg"
+                >
                   Gerar com Bolsonaro
                 </Button>
-                <Button variant="secondary" disabled={!image || !friendGender || !sceneKey} onClick={() => handleGenerateLLM('lula')}>
+                <Button 
+                  variant="secondary" 
+                  disabled={!image || !friendGender || !sceneKey} 
+                  onClick={() => handleGenerateLLM('lula')}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg text-lg"
+                >
                   Gerar com Lula
                 </Button>
               </div>

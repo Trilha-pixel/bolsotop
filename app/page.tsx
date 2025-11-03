@@ -8,6 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HistoryItem } from "@/lib/types";
 import { buildComposePrompt, type PoliticalFigure, type FriendGender, SCENARIO_OPTIONS } from "@/lib/utils";
 
+const loadingTexts = [
+  "Imprimindo a faixa presidencial...",
+  "Convocando a militância...",
+  "Calculando o PIB da zoeira...",
+  "Vazando os áudios...",
+  "Ajustando o teleprompter..."
+];
+
 export default function Home() {
   const [image, setImage] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
@@ -18,6 +26,7 @@ export default function Home() {
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [friendGender, setFriendGender] = useState<"homem" | "mulher" | null>(null);
   const [sceneKey, setSceneKey] = useState<string | null>(null);
+  const [loadingText, setLoadingText] = useState("");
 
   const handleImageSelect = (imageData: string) => {
     setImage(imageData || null);
@@ -45,6 +54,7 @@ export default function Home() {
   const handleGenerateLLM = async (politicalFigure: PoliticalFigure) => {
     if (!image) return;
     try {
+      setLoadingText(loadingTexts[Math.floor(Math.random() * loadingTexts.length)]);
       setIsLoading(true);
       setError(null);
       setResultImage(null);
@@ -159,12 +169,12 @@ export default function Home() {
           ) : isLoading ? (
             <div
               role="status"
-              className="flex items-center mx-auto justify-center h-56 max-w-sm bg-gray-300 rounded-lg animate-pulse dark:bg-secondary"
+              className="flex flex-col items-center mx-auto justify-center h-56 max-w-sm bg-gray-300 rounded-lg animate-pulse dark:bg-secondary"
             >
               <ImageIcon className="w-10 h-10 text-gray-200 dark:text-muted-foreground" />
-              <span className="pl-4 font-mono font-xs text-muted-foreground">
-                Criando sua obra-prima...
-              </span>
+              <p className="mt-2 text-lg font-medium text-foreground">
+                {loadingText}
+              </p>
             </div>
           ) : (
             <>

@@ -90,6 +90,32 @@ export default function Home() {
     }
   };
 
+  async function handleShare() {
+    if (!resultImage) return;
+    
+    // Verifica se o navegador suporta a API de compartilhamento
+    if (navigator.share) {
+      try {
+        // 1. Converte a blob URL (do estado resultImage) de volta para um File
+        const response = await fetch(resultImage);
+        const blob = await response.blob();
+        const file = new File([blob], "meme-gerado.jpg", { type: blob.type });
+        // 2. Chama a API nativa de compartilhamento
+        await navigator.share({
+          title: "Gabinete da Zoeira",
+          text: "Olha a foto que eu fiz de você! 😂",
+          files: [file], // Array de arquivos para compartilhar
+        });
+      } catch (err) {
+        // O usuário pode ter cancelado o compartilhamento, ou um erro ocorreu
+        console.error("Falha ao compartilhar:", err);
+      }
+    } else {
+      // Fallback para navegadores que não suportam (ex: Desktop Firefox)
+      alert("Seu navegador não suporta compartilhamento direto. Por favor, baixe a imagem e compartilhe manualmente.");
+    }
+  }
+
   return (
     <main className="min-h-screen flex items-center justify-center bg-background p-8">
       <Card className="w-full max-w-4xl border-0 bg-card shadow-none">
@@ -185,9 +211,20 @@ export default function Home() {
                 conversationHistory={history}
               />
               {resultImage && (
-                <div className="pt-4">
+                <div className="pt-4 flex gap-3">
+                  <Button 
+                    onClick={handleShare}
+                    className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-lg"
+                  >
+                    Compartilhar no WhatsApp
+                  </Button>
                   <a href={resultImage} download="meme-gerado.jpg">
-                    <Button variant="default">Baixar Imagem</Button>
+                    <Button 
+                      variant="outline"
+                      className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg"
+                    >
+                      Baixar Imagem
+                    </Button>
                   </a>
                 </div>
               )}

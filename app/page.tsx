@@ -127,7 +127,7 @@ export default function Home() {
               <div className="pt-4 space-y-2">
                 <p className="text-sm text-muted-foreground">Escolha o cenário:</p>
                 <select
-                  className="w-full rounded-md border border-secondary bg-background px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-secondary bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
                   value={sceneKey ?? ""}
                   onChange={(e) => setSceneKey(e.target.value || null)}
                 >

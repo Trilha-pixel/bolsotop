@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "white" },
-    { media: "(prefers-color-scheme: dark)", color: "black" },
+    { media: "(prefers-color-scheme: dark)", color: "white" },
   ],
 };
 
@@ -30,7 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${openSans.className} antialiased bg-white dark:bg-slate-950`}
+        className={`${openSans.className} antialiased bg-white text-gray-900`}
         suppressHydrationWarning
       >
         <ThemeProviders>{children}</ThemeProviders>

@@ -84,12 +84,12 @@ export default function Home() {
     <main className="min-h-screen flex items-center justify-center bg-background p-8">
       <Card className="w-full max-w-4xl border-0 bg-card shadow-none">
         <CardHeader className="flex flex-col items-center justify-center space-y-2">
-          <CardTitle className="flex items-center gap-2 text-foreground">
+          <CardTitle className="flex items-center gap-2 text-foreground font-bold text-4xl">
             <Wand2 className="w-8 h-8 text-primary" />
-            Image Creation & Editing
+            Gabinete da Zoeira
           </CardTitle>
-          <span className="text-sm font-mono text-muted-foreground">
-            powered by Google DeepMind Gemini 2.0 Flash
+          <span className="text-lg text-muted-foreground">
+            Crie a foto que seu amigo não quer que ninguém veja.
           </span>
         </CardHeader>
         <CardContent className="space-y-6 pt-6 w-full">

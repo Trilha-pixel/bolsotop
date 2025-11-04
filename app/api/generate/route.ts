@@ -234,80 +234,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // --- ETAPA DE IA 1: Análise de Visão (Gemini) ---
-    // (Descrever a friendImage para criar o prompt de inpainting)
-
-    console.log('Iniciando Etapa 1: Análise de Visão (Gemini)');
-    const friendImageBase64 = await fileToBase64(friendImageFile);
-    const visionPrompt =
-      'Descreva esta pessoa em detalhes objetivos para uma IA de geração de imagem. Foque em: sexo, idade aproximada, etnia, cor e estilo do cabelo, pelos faciais (barba/bigode), óculos e quaisquer características marcantes. Seja conciso e direto. Responda apenas com a descrição.';
-
-    // Tentar diferentes modelos em ordem de preferência
-    const modelsToTry = [
-      'gemini-2.0-flash-exp',
-      'gemini-1.5-flash',
-      'gemini-1.5-pro',
-      'gemini-1.5-flash-002',
-      'gemini-1.5-pro-002',
-    ];
+    // --- Preparar a imagem do amigo como referência visual ---
+    // IMPORTANTE: Não vamos usar Gemini para gerar descrição textual.
+    // O Imagen deve usar a imagem de referência visual diretamente.
     
-    let textPrompt = '';
-    let lastError: Error | null = null;
-
-    console.log('🔍 Iniciando tentativas com modelos Gemini...');
-    for (const modelName of modelsToTry) {
-      try {
-        console.log(`🔄 Tentando modelo: ${modelName}`);
-        const visionResponse = await genAI.models.generateContent({
-          model: modelName,
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: visionPrompt },
-                {
-                  inlineData: {
-                    data: friendImageBase64.data,
-                    mimeType: friendImageBase64.mimeType,
-                  },
-                },
-              ],
-            },
-          ],
-        });
-
-        const candidates = visionResponse.candidates || [];
-        if (candidates.length > 0) {
-          const parts = candidates[0].content?.parts || [];
-          for (const part of parts) {
-            if ('text' in part && part.text) {
-              textPrompt = part.text;
-              break;
-            }
-          }
-        }
-
-        if (textPrompt && textPrompt.trim() !== '') {
-          console.log(`✅ Modelo ${modelName} funcionou com sucesso!`);
-          break;
-        }
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.log(`❌ Modelo ${modelName} falhou: ${lastError.message}`);
-        continue;
-      }
-    }
-
-    if (!textPrompt || textPrompt.trim() === '') {
-      return NextResponse.json(
-        { error: `Não foi possível analisar a imagem do amigo. Último erro: ${lastError?.message || 'Nenhum modelo disponível'}` },
-        { status: 500 },
-      );
-    }
-
-    // Este é o prompt que será usado para "pintar" o amigo na cena
-    const finalInpaintingPrompt = `FOTO: ${textPrompt}, em um cenário com um político, fotorrealista.`;
-    console.log('Etapa 1 Concluída. Prompt Gerado:', finalInpaintingPrompt);
+    console.log('Preparando imagens para inpainting...');
+    const friendImageBase64 = await fileToBase64(friendImageFile);
+    
+    // Prompt simples que instrui o Imagen a usar a imagem de referência
+    // O Imagen deve usar a contextImage/friendImage como fonte visual, não gerar baseado em texto
 
 
     // --- ETAPA DE IA 2: Inpainting Real (Vertex AI Imagen via REST API) ---
@@ -345,23 +280,19 @@ export async function POST(request: Request) {
       // Continuar mesmo assim - o Vertex AI pode lidar com isso ou retornar erro mais claro
     }
 
-    // Criar prompt de inpainting que preserva a identidade
-    // IMPORTANTE: Usar a descrição detalhada gerada pelo Gemini para garantir precisão
-    const inpaintingPrompt = `INSTRUÇÕES DE INPAINTING:
-    
-1. Na área BRANCA da máscara, você DEVE colocar uma pessoa com estas características EXATAS:
-${textPrompt}
+    // Criar prompt de inpainting focado em usar a imagem de referência visual
+    // IMPORTANTE: O prompt deve instruir o Imagen a usar a contextImage/friendImage como referência visual,
+    // não para gerar uma nova pessoa baseada em texto.
+    const inpaintingPrompt = `Use a imagem de referência (contextImage) como fonte visual. 
+Na área branca da máscara, coloque a pessoa da imagem de referência mantendo EXATAMENTE:
+- O mesmo rosto e características faciais
+- O mesmo cabelo, cor e estilo
+- Os mesmos pelos faciais (barba/bigode se houver)
+- Os mesmos óculos (se houver)
+- A mesma expressão facial
 
-2. A pessoa descrita acima deve aparecer EXATAMENTE como na foto de referência (friendImage), mantendo:
-   - O mesmo rosto, formato facial, cor de pele
-   - O mesmo cabelo (cor, estilo, comprimento)
-   - Os mesmos pelos faciais (barba, bigode se houver)
-   - Os mesmos óculos (se houver)
-   - A mesma expressão facial e idade
-
-3. A imagem base já contém um político. MANTENHA o político INTACTO e apenas substitua a área branca da máscara.
-
-4. O resultado final deve mostrar a pessoa descrita acima ao lado do político, de forma natural, fotorrealista e profissional, como uma foto de evento político real.`;
+A imagem base já contém um político. Mantenha o político intacto e apenas substitua a área branca da máscara com a pessoa da imagem de referência. 
+O resultado deve ser fotorrealista, como uma foto de evento político real.`;
 
     try {
       // Tentar primeiro com API Key (mais simples)
@@ -390,12 +321,12 @@ ${textPrompt}
             let requestBody: Record<string, unknown>;
             
             if (isImagen3) {
-              // Imagen 3 usa editConfig com editMode
+              // Imagen 3 requer contextImages e usa baseImage em vez de image
               requestBody = {
                 instances: [
                   {
                     prompt: inpaintingPrompt,
-                    image: {
+                    baseImage: {
                       bytesBase64Encoded: baseImageBase64.data,
                     },
                     mask: {
@@ -403,24 +334,32 @@ ${textPrompt}
                         bytesBase64Encoded: maskImageBase64.data,
                       },
                     },
-                    // Imagen 3 pode não suportar referenceImage diretamente
-                    // Vamos incluir no prompt de forma mais explícita
+                    // Imagen 3 requer contextImages para referência (obrigatório)
+                    contextImages: [
+                      {
+                        bytesBase64Encoded: friendImageBase64.data,
+                      },
+                    ],
                   },
                 ],
                 parameters: {
                   sampleCount: 1,
                   editConfig: {
-                    editMode: 'inpainting-insert', // ou 'inpainting-remove' dependendo da necessidade
+                    editMode: 'inpainting-insert',
                   },
                   guidanceScale: 12,
                 },
               };
             } else {
-              // Versões antigas do Imagen
+              // Versões antigas do Imagen (imagegeneration@006, etc)
+              // IMPORTANTE: Para estas versões, o prompt deve ser mínimo
+              // para que o Imagen priorize a referenceImage visual
+              const minimalPrompt = `Coloque a pessoa da imagem de referência na área branca da máscara, mantendo todas as características faciais idênticas.`;
+              
               requestBody = {
                 instances: [
                   {
-                    prompt: inpaintingPrompt,
+                    prompt: minimalPrompt, // Prompt mínimo para não interferir na referência visual
                     image: {
                       bytesBase64Encoded: baseImageBase64.data,
                     },
@@ -436,7 +375,7 @@ ${textPrompt}
                 ],
                 parameters: {
                   sampleCount: 1,
-                  guidanceScale: 12,
+                  guidanceScale: 15, // Aumentar para forçar mais fidelidade à referência
                   aspectRatio: '1:1',
                 },
               };
@@ -524,7 +463,7 @@ ${textPrompt}
             instances: [
               {
                 prompt: inpaintingPrompt,
-                image: {
+                baseImage: {
                   bytesBase64Encoded: baseImageBase64.data,
                 },
                 mask: {
@@ -532,6 +471,12 @@ ${textPrompt}
                     bytesBase64Encoded: maskImageBase64.data,
                   },
                 },
+                // Imagen 3 requer contextImages para referência
+                contextImages: [
+                  {
+                    bytesBase64Encoded: friendImageBase64.data,
+                  },
+                ],
               },
             ],
             parameters: {
@@ -543,10 +488,13 @@ ${textPrompt}
             },
           };
         } else {
+          // Versões antigas do Imagen - usar prompt mínimo para priorizar referência visual
+          const minimalPrompt = `Coloque a pessoa da imagem de referência na área branca da máscara, mantendo todas as características faciais idênticas.`;
+          
           requestBody = {
             instances: [
               {
-                prompt: inpaintingPrompt,
+                prompt: minimalPrompt, // Prompt mínimo para não interferir na referência visual
                 image: {
                   bytesBase64Encoded: baseImageBase64.data,
                 },
@@ -562,7 +510,7 @@ ${textPrompt}
             ],
             parameters: {
               sampleCount: 1,
-              guidanceScale: 12,
+              guidanceScale: 15, // Aumentar para forçar mais fidelidade à referência
               aspectRatio: '1:1',
             },
           };

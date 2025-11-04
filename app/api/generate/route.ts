@@ -55,8 +55,22 @@ async function getAccessToken(): Promise<string> {
   return accessToken.token;
 }
 
+// --- Tipos para resposta do Imagen ---
+interface ImagenPrediction {
+  bytesBase64Encoded?: string;
+  imageBytes?: string;
+  generatedImage?: {
+    bytesBase64Encoded?: string;
+    imageBytes?: string;
+  };
+}
+
+interface ImagenResponse {
+  predictions?: ImagenPrediction[];
+}
+
 // --- Helper para processar resposta do Imagen ---
-async function processImagenResponse(imagenData: any): Promise<NextResponse> {
+async function processImagenResponse(imagenData: ImagenResponse): Promise<NextResponse> {
   console.log('📦 Processando resposta do Vertex AI Imagen');
   
   const predictions = imagenData.predictions || [];
@@ -208,8 +222,7 @@ export async function POST(request: Request) {
           'https://aiplatform.googleapis.com/v1/publishers/google/models/imagen:predict',
         ];
 
-        let imagenData: any = null;
-        let imagenError: Error | null = null;
+        let imagenData: ImagenResponse | null = null;
 
         for (const endpoint of imagenEndpoints) {
           try {
@@ -253,7 +266,6 @@ export async function POST(request: Request) {
               console.error(`❌ Endpoint falhou (${imagenResponse.status}):`, errorText);
               
               if (imagenResponse.status === 403 || imagenResponse.status === 404) {
-                imagenError = new Error(`Endpoint ${endpoint}: ${errorText}`);
                 continue; // Tentar próximo endpoint
               }
               
@@ -266,8 +278,7 @@ export async function POST(request: Request) {
             
           } catch (error) {
             if (error instanceof TypeError || (error instanceof Error && error.message.includes('fetch'))) {
-              imagenError = error;
-              continue;
+              continue; // Tentar próximo endpoint
             }
             throw error;
           }
@@ -299,7 +310,7 @@ export async function POST(request: Request) {
       ];
 
       let imagenError: Error | null = null;
-      let imagenData: any = null;
+      let imagenData: ImagenResponse | null = null;
 
       for (const modelVersion of modelVersions) {
         const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelVersion}:predict`;

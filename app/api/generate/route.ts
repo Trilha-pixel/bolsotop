@@ -4,9 +4,12 @@ import { GoogleGenAI } from '@google/genai';
 // --- Configuração dos Clientes de IA ---
 // NOTA: Isso requer variáveis de ambiente em .env.local:
 // GEMINI_API_KEY = "sua-chave-api-gemini-aqui"
+// GOOGLE_CLOUD_PROJECT = "seu-projeto-gcloud"
+// GOOGLE_CLOUD_LOCATION = "us-central1"
+// GOOGLE_APPLICATION_CREDENTIALS_JSON = "conteúdo do JSON da service account" (opcional)
 // ----------------------------------------------------
 
-// Cliente Gemini (para Análise de Visão e Geração de Imagem)
+// Cliente Gemini (para Análise de Visão)
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 // --- Helper para converter Arquivo (File) para base64 ---
@@ -17,6 +20,7 @@ async function fileToBase64(file: File): Promise<{ data: string; mimeType: strin
     mimeType: file.type,
   };
 }
+
 
 // --- A Rota da API (POST) ---
 export async function POST(request: Request) {
@@ -108,19 +112,25 @@ export async function POST(request: Request) {
     console.log('Etapa 1 Concluída. Prompt Gerado:', finalInpaintingPrompt);
 
 
-    // --- ETAPA DE IA 2: Geração de Imagem (Gemini 2.0 Flash) ---
-    // (Usar a descrição gerada para criar a imagem final)
-    // NOTA: Usando Gemini 2.0 Flash em vez de Vertex AI/Imagen para simplificar
+    // --- ETAPA DE IA 2: Inpainting Real (Gemini 2.0 Flash com Edição) ---
+    // (Usar Gemini 2.0 Flash para fazer edição real na imagem base usando a máscara)
+    // Isso preserva a identidade do amigo e a imagem base do político
 
-    console.log('Iniciando Etapa 2: Geração de Imagem (Gemini 2.0 Flash)');
+    console.log('Iniciando Etapa 2: Inpainting Real (Gemini 2.0 Flash)');
     
-    // Preparar a imagem base para usar como referência
+    // Preparar as imagens em base64
     const baseImageBase64 = await fileToBase64(baseImageFile);
-    
-    // Criar prompt completo para o Gemini 2.0 Flash gerar a imagem
-    const imageGenerationPrompt = `${finalInpaintingPrompt}. A imagem deve mostrar a pessoa descrita acima ao lado de um político em um cenário realista e profissional.`;
+    const maskImageBase64 = await fileToBase64(maskImageFile);
+    const friendImageBase64 = await fileToBase64(friendImageFile);
 
-    // Tentar usar Gemini 2.0 Flash para gerar a imagem diretamente
+    // Criar prompt de inpainting muito específico para preservar a identidade
+    const inpaintingPrompt = `Esta é uma imagem base (primeira imagem) e uma máscara (segunda imagem) que indica onde editar. 
+    
+Na área branca da máscara, você DEVE colocar a pessoa da imagem de referência (terceira imagem), mantendo EXATAMENTE o mesmo rosto, características faciais, cabelo, cor de pele e expressão.
+    
+A pessoa da referência deve aparecer IDÊNTICA na área branca da máscara, preservando 100% de sua identidade. Use apenas o rosto e características da pessoa de referência, mantendo o cenário e o político da imagem base intactos.`;
+
+    // Tentar usar Gemini 2.0 Flash para fazer edição/inpainting
     const imageModelsToTry = [
       'gemini-2.0-flash-exp-image-generation',
       'gemini-2.0-flash-exp',
@@ -131,27 +141,39 @@ export async function POST(request: Request) {
 
     for (const modelName of imageModelsToTry) {
       try {
-        console.log(`🔄 Tentando gerar imagem com modelo: ${modelName}`);
+        console.log(`🔄 Tentando inpainting com modelo: ${modelName}`);
         
-        // Usar a mesma estrutura do app/api/image/route.ts que funciona
+        // Enviar as 3 imagens: base, máscara e referência
         const imageResponse = await genAI.models.generateContent({
           model: modelName,
           contents: [
             {
               role: 'user',
               parts: [
-                { text: imageGenerationPrompt },
+                { text: inpaintingPrompt },
                 {
                   inlineData: {
                     data: baseImageBase64.data,
                     mimeType: baseImageBase64.mimeType,
                   },
                 },
+                {
+                  inlineData: {
+                    data: maskImageBase64.data,
+                    mimeType: maskImageBase64.mimeType,
+                  },
+                },
+                {
+                  inlineData: {
+                    data: friendImageBase64.data,
+                    mimeType: friendImageBase64.mimeType,
+                  },
+                },
               ],
             },
           ],
           config: {
-            temperature: 0.7,
+            temperature: 0.3, // Temperatura mais baixa para maior precisão
             topP: 0.95,
             topK: 40,
             responseModalities: ['Text', 'Image'],
@@ -171,7 +193,7 @@ export async function POST(request: Request) {
         }
 
         if (generatedImage) {
-          console.log(`✅ Imagem gerada com sucesso usando ${modelName}`);
+          console.log(`✅ Inpainting concluído com sucesso usando ${modelName}!`);
           break;
         }
       } catch (error) {
@@ -183,7 +205,7 @@ export async function POST(request: Request) {
 
     if (!generatedImage) {
       return NextResponse.json(
-        { error: `Não foi possível gerar a imagem. Erro: ${imageError?.message || 'Nenhum modelo de imagem disponível'}` },
+        { error: `Não foi possível fazer inpainting. Erro: ${imageError?.message || 'Nenhum modelo disponível'}` },
         { status: 500 },
       );
     }

@@ -23,6 +23,56 @@ async function fileToBase64(file: File): Promise<{ data: string; mimeType: strin
   };
 }
 
+// --- Helper para redimensionar imagem para garantir dimensões compatíveis ---
+async function resizeImageToMatch(
+  imageBase64: string,
+  targetWidth: number,
+  targetHeight: number,
+  mimeType: string
+): Promise<string> {
+  // Usar canvas para redimensionar (em Node.js precisamos de uma biblioteca)
+  // Por enquanto, vamos retornar a imagem original e deixar o Vertex AI lidar
+  // OU redimensionar usando sharp se disponível
+  
+  // Por enquanto, vamos apenas garantir que as imagens sejam redimensionadas
+  // para corresponder à imagem base
+  
+  // Importar dinamicamente se necessário
+  try {
+    const sharp = require('sharp');
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    const resized = await sharp(imageBuffer)
+      .resize(targetWidth, targetHeight, {
+        fit: 'fill',
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
+      })
+      .toBuffer();
+    return resized.toString('base64');
+  } catch (error) {
+    // Se sharp não estiver disponível, retornar original
+    // O usuário pode instalar: npm install sharp
+    console.warn('⚠️ Sharp não disponível, usando imagem original. Instale: npm install sharp');
+    return imageBase64;
+  }
+}
+
+// --- Helper para obter dimensões de uma imagem ---
+async function getImageDimensions(imageBase64: string): Promise<{ width: number; height: number }> {
+  try {
+    const sharp = require('sharp');
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    const metadata = await sharp(imageBuffer).metadata();
+    return {
+      width: metadata.width || 1024,
+      height: metadata.height || 1024,
+    };
+  } catch (error) {
+    // Se sharp não estiver disponível, retornar dimensões padrão
+    console.warn('⚠️ Não foi possível obter dimensões, usando padrão 1024x1024');
+    return { width: 1024, height: 1024 };
+  }
+}
+
 // --- Helper para obter token de acesso do Google Cloud ---
 async function getAccessToken(): Promise<string> {
   let auth: GoogleAuth;
@@ -229,8 +279,31 @@ export async function POST(request: Request) {
     console.log('Iniciando Etapa 2: Inpainting Real (Vertex AI Imagen)');
     
     // Preparar as imagens em base64 (friendImageBase64 já foi criado na Etapa 1)
-    const baseImageBase64 = await fileToBase64(baseImageFile);
-    const maskImageBase64 = await fileToBase64(maskImageFile);
+    let baseImageBase64 = await fileToBase64(baseImageFile);
+    let maskImageBase64 = await fileToBase64(maskImageFile);
+
+    // Obter dimensões da imagem base e redimensionar a máscara para corresponder
+    try {
+      const baseDimensions = await getImageDimensions(baseImageBase64.data);
+      console.log(`📐 Dimensões da imagem base: ${baseDimensions.width}x${baseDimensions.height}`);
+      
+      const maskDimensions = await getImageDimensions(maskImageBase64.data);
+      console.log(`📐 Dimensões da máscara: ${maskDimensions.width}x${maskDimensions.height}`);
+      
+      // Se as dimensões não corresponderem, redimensionar a máscara
+      if (maskDimensions.width !== baseDimensions.width || maskDimensions.height !== baseDimensions.height) {
+        console.log(`🔄 Redimensionando máscara de ${maskDimensions.width}x${maskDimensions.height} para ${baseDimensions.width}x${baseDimensions.height}`);
+        maskImageBase64.data = await resizeImageToMatch(
+          maskImageBase64.data,
+          baseDimensions.width,
+          baseDimensions.height,
+          maskImageBase64.mimeType
+        );
+      }
+    } catch (error) {
+      console.warn('⚠️ Não foi possível verificar/redimensionar imagens:', error);
+      // Continuar mesmo assim - o Vertex AI pode lidar com isso ou retornar erro mais claro
+    }
 
     // Criar prompt de inpainting que preserva a identidade
     const inpaintingPrompt = `${finalInpaintingPrompt}. A pessoa deve aparecer EXATAMENTE como na imagem de referência, mantendo todas as características faciais idênticas.`;

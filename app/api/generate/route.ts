@@ -70,28 +70,56 @@ interface ImagenResponse {
 }
 
 // --- Helper para processar resposta do Imagen ---
-async function processImagenResponse(imagenData: ImagenResponse): Promise<NextResponse> {
+async function processImagenResponse(imagenData: unknown): Promise<NextResponse> {
   console.log('📦 Processando resposta do Vertex AI Imagen');
+  console.log('📋 Estrutura completa da resposta:', JSON.stringify(imagenData, null, 2));
   
-  const predictions = imagenData.predictions || [];
+  // A resposta pode ter diferentes estruturas, tentar todas
+  const response = imagenData as Record<string, unknown>;
+  
+  // Tentar diferentes caminhos na resposta
+  let predictions: ImagenPrediction[] = [];
+  
+  // Caminho 1: predictions no topo
+  if (Array.isArray(response.predictions)) {
+    predictions = response.predictions as ImagenPrediction[];
+  }
+  // Caminho 2: predictions dentro de data
+  else if (response.data && Array.isArray((response.data as Record<string, unknown>).predictions)) {
+    predictions = ((response.data as Record<string, unknown>).predictions as ImagenPrediction[]);
+  }
+  // Caminho 3: resposta direta é um array
+  else if (Array.isArray(response)) {
+    predictions = response as ImagenPrediction[];
+  }
+  // Caminho 4: imagem direta na resposta
+  else if (response.bytesBase64Encoded || response.imageBytes || response.image) {
+    predictions = [response as ImagenPrediction];
+  }
+  
   if (predictions.length === 0) {
-    throw new Error('A resposta do Imagen não contém predictions');
+    console.error('❌ Estrutura da resposta não reconhecida:', JSON.stringify(imagenData, null, 2));
+    throw new Error(`A resposta do Imagen não contém predictions. Estrutura recebida: ${JSON.stringify(Object.keys(response))}`);
   }
 
   // A estrutura pode variar, tentar diferentes formatos
   let imageBase64: string | undefined;
+  const firstPrediction = predictions[0] as Record<string, unknown>;
   
-  if (predictions[0].bytesBase64Encoded) {
-    imageBase64 = predictions[0].bytesBase64Encoded;
-  } else if (predictions[0].imageBytes) {
-    imageBase64 = predictions[0].imageBytes;
-  } else if (predictions[0].generatedImage) {
-    imageBase64 = predictions[0].generatedImage.bytesBase64Encoded || predictions[0].generatedImage.imageBytes;
+  if (typeof firstPrediction.bytesBase64Encoded === 'string') {
+    imageBase64 = firstPrediction.bytesBase64Encoded;
+  } else if (typeof firstPrediction.imageBytes === 'string') {
+    imageBase64 = firstPrediction.imageBytes;
+  } else if (firstPrediction.generatedImage) {
+    const generatedImage = firstPrediction.generatedImage as Record<string, unknown>;
+    imageBase64 = (generatedImage.bytesBase64Encoded || generatedImage.imageBytes) as string | undefined;
+  } else if (typeof firstPrediction.image === 'string') {
+    imageBase64 = firstPrediction.image;
   }
 
   if (!imageBase64) {
-    console.error('Estrutura da resposta:', JSON.stringify(predictions[0], null, 2));
-    throw new Error('A resposta do Imagen não contém uma imagem gerada no formato esperado');
+    console.error('❌ Estrutura da prediction não reconhecida:', JSON.stringify(firstPrediction, null, 2));
+    throw new Error(`A resposta do Imagen não contém uma imagem gerada no formato esperado. Chaves disponíveis: ${JSON.stringify(Object.keys(firstPrediction))}`);
   }
 
   const imageBytes = Buffer.from(imageBase64, 'base64');
@@ -272,9 +300,10 @@ export async function POST(request: Request) {
               throw new Error(`Vertex AI retornou erro ${imagenResponse.status}: ${errorText}`);
             }
 
-            imagenData = await imagenResponse.json();
+            const responseData = await imagenResponse.json();
             console.log(`✅ Endpoint funcionou com API Key!`);
-            return await processImagenResponse(imagenData);
+            console.log('📋 Resposta recebida:', JSON.stringify(responseData, null, 2).substring(0, 500)); // Log parcial para debug
+            return await processImagenResponse(responseData);
             
           } catch (error) {
             if (error instanceof TypeError || (error instanceof Error && error.message.includes('fetch'))) {
@@ -363,8 +392,10 @@ export async function POST(request: Request) {
             throw new Error(`Vertex AI retornou erro ${imagenResponse.status}: ${errorText}`);
           }
 
-          imagenData = await imagenResponse.json();
+          const responseData = await imagenResponse.json();
           console.log(`✅ Modelo ${modelVersion} funcionou!`);
+          console.log('📋 Resposta recebida:', JSON.stringify(responseData, null, 2).substring(0, 500)); // Log parcial para debug
+          imagenData = responseData;
           break;
           
         } catch (error) {

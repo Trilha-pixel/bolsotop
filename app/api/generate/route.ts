@@ -97,11 +97,18 @@ export async function POST(request: Request) {
       },
     };
 
-    // @ts-expect-error - O SDK do @google-cloud/aiplatform pode ter tipos complexos
+    // @ts-expect-error - O SDK do @google-cloud/vertexai pode ter tipos complexos
     const inpaintingResponse = await imagenModel.editImage(inpaintingRequest);
 
-    // @ts-expect-error - A resposta pode ter estrutura dinâmica
-    const imageBase64 = inpaintingResponse[0].imageBytes;
+    // Acessar a resposta de forma segura
+    let imageBase64: string | undefined;
+    const response = inpaintingResponse as any;
+    if (Array.isArray(response) && response.length > 0) {
+      imageBase64 = response[0]?.imageBytes || response[0]?.bytes || response[0]?.data;
+    } else if (response && typeof response === 'object') {
+      imageBase64 = response.imageBytes || response.bytes || response.data;
+    }
+    
     if (!imageBase64) {
       return NextResponse.json(
         { error: 'A IA de edição não retornou uma imagem.' },

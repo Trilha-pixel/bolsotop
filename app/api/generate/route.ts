@@ -346,7 +346,22 @@ export async function POST(request: Request) {
     }
 
     // Criar prompt de inpainting que preserva a identidade
-    const inpaintingPrompt = `${finalInpaintingPrompt}. A pessoa deve aparecer EXATAMENTE como na imagem de referência, mantendo todas as características faciais idênticas.`;
+    // IMPORTANTE: Usar a descrição detalhada gerada pelo Gemini para garantir precisão
+    const inpaintingPrompt = `INSTRUÇÕES DE INPAINTING:
+    
+1. Na área BRANCA da máscara, você DEVE colocar uma pessoa com estas características EXATAS:
+${textPrompt}
+
+2. A pessoa descrita acima deve aparecer EXATAMENTE como na foto de referência (friendImage), mantendo:
+   - O mesmo rosto, formato facial, cor de pele
+   - O mesmo cabelo (cor, estilo, comprimento)
+   - Os mesmos pelos faciais (barba, bigode se houver)
+   - Os mesmos óculos (se houver)
+   - A mesma expressão facial e idade
+
+3. A imagem base já contém um político. MANTENHA o político INTACTO e apenas substitua a área branca da máscara.
+
+4. O resultado final deve mostrar a pessoa descrita acima ao lado do político, de forma natural, fotorrealista e profissional, como uma foto de evento político real.`;
 
     try {
       // Tentar primeiro com API Key (mais simples)
@@ -356,11 +371,11 @@ export async function POST(request: Request) {
         console.log('🔑 Usando Vertex AI API Key...');
         
         // Tentar diferentes endpoints para Imagen com API Key
+        // NOTA: Imagen 3 usa modelo diferente e estrutura diferente
         const imagenEndpoints = [
-          'https://aiplatform.googleapis.com/v1/publishers/google/models/imagegeneration@006:predict',
+          'https://aiplatform.googleapis.com/v1/publishers/google/models/imagen-3.0-capability-001:predict', // Imagen 3 mais recente
+          'https://aiplatform.googleapis.com/v1/publishers/google/models/imagegeneration@006:predict', // Fallback
           'https://aiplatform.googleapis.com/v1/publishers/google/models/imagegeneration@005:predict',
-          'https://aiplatform.googleapis.com/v1/publishers/google/models/imagen-3:predict',
-          'https://aiplatform.googleapis.com/v1/publishers/google/models/imagen:predict',
         ];
 
 
@@ -369,29 +384,63 @@ export async function POST(request: Request) {
             const fullEndpoint = `${endpoint}?key=${vertexAIApiKey}`;
             console.log(`📡 Tentando endpoint: ${endpoint}`);
 
-            const requestBody = {
-              instances: [
-                {
-                  prompt: inpaintingPrompt,
-                  image: {
-                    bytesBase64Encoded: baseImageBase64.data,
-                  },
-                  mask: {
+            // Verificar se é Imagen 3 (estrutura diferente)
+            const isImagen3 = endpoint.includes('imagen-3.0');
+            
+            let requestBody: Record<string, unknown>;
+            
+            if (isImagen3) {
+              // Imagen 3 usa editConfig com editMode
+              requestBody = {
+                instances: [
+                  {
+                    prompt: inpaintingPrompt,
                     image: {
-                      bytesBase64Encoded: maskImageBase64.data,
+                      bytesBase64Encoded: baseImageBase64.data,
+                    },
+                    mask: {
+                      image: {
+                        bytesBase64Encoded: maskImageBase64.data,
+                      },
+                    },
+                    // Imagen 3 pode não suportar referenceImage diretamente
+                    // Vamos incluir no prompt de forma mais explícita
+                  },
+                ],
+                parameters: {
+                  sampleCount: 1,
+                  editConfig: {
+                    editMode: 'inpainting-insert', // ou 'inpainting-remove' dependendo da necessidade
+                  },
+                  guidanceScale: 12,
+                },
+              };
+            } else {
+              // Versões antigas do Imagen
+              requestBody = {
+                instances: [
+                  {
+                    prompt: inpaintingPrompt,
+                    image: {
+                      bytesBase64Encoded: baseImageBase64.data,
+                    },
+                    mask: {
+                      image: {
+                        bytesBase64Encoded: maskImageBase64.data,
+                      },
+                    },
+                    referenceImage: {
+                      bytesBase64Encoded: friendImageBase64.data,
                     },
                   },
-                  referenceImage: {
-                    bytesBase64Encoded: friendImageBase64.data,
-                  },
+                ],
+                parameters: {
+                  sampleCount: 1,
+                  guidanceScale: 12,
+                  aspectRatio: '1:1',
                 },
-              ],
-              parameters: {
-                sampleCount: 1,
-                guidanceScale: 12,
-                aspectRatio: '1:1',
-              },
-            };
+              };
+            }
 
             console.log('📤 Enviando requisição para Imagen');
             console.log('📝 Prompt:', inpaintingPrompt.substring(0, 200));
@@ -449,11 +498,12 @@ export async function POST(request: Request) {
       console.log('✅ Token obtido com sucesso');
 
       // Usar Service Account com endpoint baseado em projeto
+      // Priorizar Imagen 3 (mais recente e funcional)
       const modelVersions = [
-        'imagegeneration@006',
+        'imagen-3.0-capability-001', // Imagen 3 mais recente
+        'imagegeneration@006', // Fallback
         'imagegeneration@005',
         'imagegeneration@004',
-        'imagegeneration@003',
       ];
 
       let imagenError: Error | null = null;
@@ -464,29 +514,59 @@ export async function POST(request: Request) {
         
         console.log(`📡 Tentando modelo: ${modelVersion}`);
 
-        const requestBody = {
-          instances: [
-            {
-              prompt: inpaintingPrompt,
-              image: {
-                bytesBase64Encoded: baseImageBase64.data,
-              },
-              mask: {
+        // Usar a mesma estrutura para Service Account
+        const isImagen3ServiceAccount = modelVersion.includes('imagen-3') || modelVersion.includes('capability');
+        
+        let requestBody: Record<string, unknown>;
+        
+        if (isImagen3ServiceAccount) {
+          requestBody = {
+            instances: [
+              {
+                prompt: inpaintingPrompt,
                 image: {
-                  bytesBase64Encoded: maskImageBase64.data,
+                  bytesBase64Encoded: baseImageBase64.data,
+                },
+                mask: {
+                  image: {
+                    bytesBase64Encoded: maskImageBase64.data,
+                  },
                 },
               },
-              referenceImage: {
-                bytesBase64Encoded: friendImageBase64.data,
+            ],
+            parameters: {
+              sampleCount: 1,
+              editConfig: {
+                editMode: 'inpainting-insert',
               },
+              guidanceScale: 12,
             },
-          ],
-          parameters: {
-            sampleCount: 1,
-            guidanceScale: 12,
-            aspectRatio: '1:1',
-          },
-        };
+          };
+        } else {
+          requestBody = {
+            instances: [
+              {
+                prompt: inpaintingPrompt,
+                image: {
+                  bytesBase64Encoded: baseImageBase64.data,
+                },
+                mask: {
+                  image: {
+                    bytesBase64Encoded: maskImageBase64.data,
+                  },
+                },
+                referenceImage: {
+                  bytesBase64Encoded: friendImageBase64.data,
+                },
+              },
+            ],
+            parameters: {
+              sampleCount: 1,
+              guidanceScale: 12,
+              aspectRatio: '1:1',
+            },
+          };
+        }
 
         try {
           const imagenResponse = await fetch(endpoint, {

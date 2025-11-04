@@ -73,13 +73,17 @@ async function getAccessToken(): Promise<string> {
   // Se temos credenciais JSON (Service Account da Vercel), usar elas
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
     try {
-      const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+      const jsonString = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+      console.log('🔑 Tentando parsear GOOGLE_APPLICATION_CREDENTIALS_JSON (primeiros 100 chars):', jsonString.substring(0, 100));
+      const credentials = JSON.parse(jsonString);
       auth = new GoogleAuth({
         credentials,
         scopes: ['https://www.googleapis.com/auth/cloud-platform'],
       });
+      console.log('✅ Credenciais parseadas com sucesso');
     } catch (error) {
-      throw new Error(`Erro ao parsear GOOGLE_APPLICATION_CREDENTIALS_JSON: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('❌ Erro ao parsear JSON:', error);
+      throw new Error(`Erro ao parsear GOOGLE_APPLICATION_CREDENTIALS_JSON: ${error instanceof Error ? error.message : String(error)}. Verifique se o JSON está correto no .env.local`);
     }
   } else {
     // Tentar usar Application Default Credentials (para desenvolvimento local)
@@ -528,19 +532,23 @@ export async function POST(request: Request) {
 
       return await processImagenResponse(imagenData);
 
-    } catch (error) {
-      console.error('❌ Erro no inpainting:', error);
-      return NextResponse.json(
-        { error: `Erro no inpainting: ${error instanceof Error ? error.message : String(error)}` },
-        { status: 500 },
-      );
-    }
+  } catch (error) {
+    console.error('❌ Erro no inpainting:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Stack trace:', error instanceof Error ? error.stack : 'N/A');
+    return NextResponse.json(
+      { error: `Erro no inpainting: ${errorMessage}` },
+      { status: 500 },
+    );
+  }
 
   } catch (error) {
-    console.error('Erro grave na API /api/generate:', error);
+    console.error('❌ Erro grave na API /api/generate:', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro interno do servidor.';
+    const errorStack = error instanceof Error ? error.stack : 'N/A';
+    console.error('❌ Stack trace completo:', errorStack);
     return NextResponse.json(
-      { error: errorMessage },
+      { error: `${errorMessage}. Verifique os logs do servidor para mais detalhes.` },
       { status: 500 },
     );
   }

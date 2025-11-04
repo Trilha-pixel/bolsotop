@@ -61,17 +61,10 @@ export function ImageResultDisplay({
       <div className="rounded-lg overflow-hidden bg-muted p-2 sm:p-3">
         <img
           src={imageUrl}
-          alt={description || "Generated image"}
+          alt="Generated image"
           className="w-full max-w-full sm:max-w-[640px] h-auto mx-auto rounded-lg"
         />
       </div>
-
-      {description && (
-        <div className="p-3 sm:p-4 rounded-lg bg-muted">
-          <h3 className="text-sm font-medium mb-2">Descrição</h3>
-          <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
-        </div>
-      )}
 
       {showHistory && conversationHistory.length > 0 && (
         <div className="p-4 rounded-lg">

@@ -196,22 +196,22 @@ export default function Home() {
                   </select>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 pt-3 sm:pt-4">
+                <div className="flex flex-col sm:flex-row gap-3 mt-6 sm:mt-8">
                   <Button 
                     variant="default" 
                     disabled={!image || !friendGender || !sceneKey} 
                     onClick={() => handleGenerateLLM('bolsonaro')}
-                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg text-base sm:text-lg w-full sm:w-auto min-h-[48px] sm:min-h-0"
+                    className="bg-green-600 hover:bg-green-700 active:bg-green-800 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-bold py-4 px-8 rounded-lg text-lg sm:text-xl w-full sm:w-auto min-h-[56px] sm:min-h-[56px] transition-all duration-200 shadow-lg hover:shadow-xl disabled:shadow-none"
                   >
-                    Gerar com Bolsonaro
+                    🇧🇷 Gerar com Bolsonaro
                   </Button>
                   <Button 
                     variant="secondary" 
                     disabled={!image || !friendGender || !sceneKey} 
                     onClick={() => handleGenerateLLM('lula')}
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg text-base sm:text-lg w-full sm:w-auto min-h-[48px] sm:min-h-0"
+                    className="bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-bold py-4 px-8 rounded-lg text-lg sm:text-xl w-full sm:w-auto min-h-[56px] sm:min-h-[56px] transition-all duration-200 shadow-lg hover:shadow-xl disabled:shadow-none"
                   >
-                    Gerar com Lula
+                    🚩 Gerar com Lula
                   </Button>
                 </div>
               </div>

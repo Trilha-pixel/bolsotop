@@ -280,19 +280,9 @@ export async function POST(request: Request) {
       // Continuar mesmo assim - o Vertex AI pode lidar com isso ou retornar erro mais claro
     }
 
-    // Criar prompt de inpainting focado em usar a imagem de referência visual
-    // IMPORTANTE: O prompt deve instruir o Imagen a usar a contextImage/friendImage como referência visual,
-    // não para gerar uma nova pessoa baseada em texto.
-    const inpaintingPrompt = `Use a imagem de referência (contextImage) como fonte visual. 
-Na área branca da máscara, coloque a pessoa da imagem de referência mantendo EXATAMENTE:
-- O mesmo rosto e características faciais
-- O mesmo cabelo, cor e estilo
-- Os mesmos pelos faciais (barba/bigode se houver)
-- Os mesmos óculos (se houver)
-- A mesma expressão facial
-
-A imagem base já contém um político. Mantenha o político intacto e apenas substitua a área branca da máscara com a pessoa da imagem de referência. 
-O resultado deve ser fotorrealista, como uma foto de evento político real.`;
+    // Criar prompt de inpainting simples - o referenceImage deve ser usado automaticamente
+    // IMPORTANTE: Prompt mínimo para que o Imagen use a referenceImage visual diretamente
+    const inpaintingPrompt = `Coloque a pessoa da imagem de referência na área branca da máscara. Mantenha o político intacto. O resultado deve ser fotorrealista e profissional.`;
 
     try {
       // Tentar primeiro com API Key (mais simples)
@@ -302,10 +292,9 @@ O resultado deve ser fotorrealista, como uma foto de evento político real.`;
         console.log('🔑 Usando Vertex AI API Key...');
         
         // Tentar diferentes endpoints para Imagen com API Key
-        // NOTA: Imagen 3 usa modelo diferente e estrutura diferente
+        // NOTA: Usar imagegeneration@006 que já sabemos que funciona com referenceImage
         const imagenEndpoints = [
-          'https://aiplatform.googleapis.com/v1/publishers/google/models/imagen-3.0-capability-001:predict', // Imagen 3 mais recente
-          'https://aiplatform.googleapis.com/v1/publishers/google/models/imagegeneration@006:predict', // Fallback
+          'https://aiplatform.googleapis.com/v1/publishers/google/models/imagegeneration@006:predict', // Funciona com referenceImage
           'https://aiplatform.googleapis.com/v1/publishers/google/models/imagegeneration@005:predict',
         ];
 
@@ -315,77 +304,49 @@ O resultado deve ser fotorrealista, como uma foto de evento político real.`;
             const fullEndpoint = `${endpoint}?key=${vertexAIApiKey}`;
             console.log(`📡 Tentando endpoint: ${endpoint}`);
 
-            // Verificar se é Imagen 3 (estrutura diferente)
-            const isImagen3 = endpoint.includes('imagen-3.0');
+            // Usar imagegeneration@006 que funciona com referenceImage
+            // IMPORTANTE: O prompt deve ser mínimo para que o Imagen priorize a referenceImage visual
+            const minimalPrompt = `Coloque a pessoa da imagem de referência na área branca da máscara, mantendo todas as características faciais idênticas.`;
             
-            let requestBody: Record<string, unknown>;
-            
-            if (isImagen3) {
-              // Imagen 3 requer contextImages e usa baseImage em vez de image
-              requestBody = {
-                instances: [
-                  {
-                    prompt: inpaintingPrompt,
-                    baseImage: {
-                      bytesBase64Encoded: baseImageBase64.data,
-                    },
-                    mask: {
-                      image: {
-                        bytesBase64Encoded: maskImageBase64.data,
-                      },
-                    },
-                    // Imagen 3 requer contextImages para referência (obrigatório)
-                    contextImages: [
-                      {
-                        bytesBase64Encoded: friendImageBase64.data,
-                      },
-                    ],
+            const requestBody = {
+              instances: [
+                {
+                  prompt: minimalPrompt, // Prompt mínimo para não interferir na referência visual
+                  image: {
+                    bytesBase64Encoded: baseImageBase64.data,
                   },
-                ],
-                parameters: {
-                  sampleCount: 1,
-                  editConfig: {
-                    editMode: 'inpainting-insert',
-                  },
-                  guidanceScale: 12,
-                },
-              };
-            } else {
-              // Versões antigas do Imagen (imagegeneration@006, etc)
-              // IMPORTANTE: Para estas versões, o prompt deve ser mínimo
-              // para que o Imagen priorize a referenceImage visual
-              const minimalPrompt = `Coloque a pessoa da imagem de referência na área branca da máscara, mantendo todas as características faciais idênticas.`;
-              
-              requestBody = {
-                instances: [
-                  {
-                    prompt: minimalPrompt, // Prompt mínimo para não interferir na referência visual
+                  mask: {
                     image: {
-                      bytesBase64Encoded: baseImageBase64.data,
-                    },
-                    mask: {
-                      image: {
-                        bytesBase64Encoded: maskImageBase64.data,
-                      },
-                    },
-                    referenceImage: {
-                      bytesBase64Encoded: friendImageBase64.data,
+                      bytesBase64Encoded: maskImageBase64.data,
                     },
                   },
-                ],
-                parameters: {
-                  sampleCount: 1,
-                  guidanceScale: 15, // Aumentar para forçar mais fidelidade à referência
-                  aspectRatio: '1:1',
+                  referenceImage: {
+                    bytesBase64Encoded: friendImageBase64.data,
+                  },
                 },
-              };
-            }
+              ],
+              parameters: {
+                sampleCount: 1,
+                guidanceScale: 15, // Aumentar para forçar mais fidelidade à referência
+                aspectRatio: '1:1',
+              },
+            };
 
             console.log('📤 Enviando requisição para Imagen');
-            console.log('📝 Prompt:', inpaintingPrompt.substring(0, 200));
+            console.log('📝 Prompt:', inpaintingPrompt);
             console.log('🖼️ Tamanho imagem base:', baseImageBase64.data.length, 'chars');
             console.log('🎭 Tamanho máscara:', maskImageBase64.data.length, 'chars');
             console.log('👤 Tamanho referência:', friendImageBase64.data.length, 'chars');
+            // Log da estrutura do requestBody (sem os dados base64 para não poluir)
+            const requestBodyForLog = requestBody as { instances?: Array<Record<string, unknown>>; parameters?: Record<string, unknown> };
+            console.log('📋 RequestBody (estrutura):', JSON.stringify({
+              instancesCount: requestBodyForLog.instances?.length || 0,
+              hasPrompt: !!requestBodyForLog.instances?.[0]?.prompt,
+              hasImage: !!requestBodyForLog.instances?.[0]?.image,
+              hasMask: !!requestBodyForLog.instances?.[0]?.mask,
+              hasReferenceImage: !!requestBodyForLog.instances?.[0]?.referenceImage,
+              parameters: requestBodyForLog.parameters,
+            }, null, 2));
 
             const imagenResponse = await fetch(fullEndpoint, {
               method: 'POST',
@@ -408,7 +369,15 @@ O resultado deve ser fotorrealista, como uma foto de evento político real.`;
 
             const responseData = await imagenResponse.json();
             console.log(`✅ Endpoint funcionou com API Key!`);
-            console.log('📋 Resposta recebida:', JSON.stringify(responseData, null, 2).substring(0, 500)); // Log parcial para debug
+            console.log('📋 Resposta completa recebida:', JSON.stringify(responseData, null, 2));
+            console.log('📋 Tipo da resposta:', typeof responseData);
+            console.log('📋 Chaves da resposta:', Object.keys(responseData || {}));
+            
+            // Verificar se a resposta está vazia
+            if (!responseData || Object.keys(responseData).length === 0) {
+              throw new Error('A resposta do Imagen está vazia. Isso pode indicar que o modelo não gerou nenhuma imagem. Verifique se o prompt e as imagens estão corretos.');
+            }
+            
             return await processImagenResponse(responseData);
             
           } catch (error) {
@@ -437,10 +406,9 @@ O resultado deve ser fotorrealista, como uma foto de evento político real.`;
       console.log('✅ Token obtido com sucesso');
 
       // Usar Service Account com endpoint baseado em projeto
-      // Priorizar Imagen 3 (mais recente e funcional)
+      // Usar imagegeneration@006 que já sabemos que funciona com referenceImage
       const modelVersions = [
-        'imagen-3.0-capability-001', // Imagen 3 mais recente
-        'imagegeneration@006', // Fallback
+        'imagegeneration@006', // Funciona com referenceImage
         'imagegeneration@005',
         'imagegeneration@004',
       ];
@@ -453,68 +421,33 @@ O resultado deve ser fotorrealista, como uma foto de evento político real.`;
         
         console.log(`📡 Tentando modelo: ${modelVersion}`);
 
-        // Usar a mesma estrutura para Service Account
-        const isImagen3ServiceAccount = modelVersion.includes('imagen-3') || modelVersion.includes('capability');
+        // Usar imagegeneration@006 que funciona com referenceImage
+        // IMPORTANTE: O prompt deve ser mínimo para que o Imagen priorize a referenceImage visual
+        const minimalPrompt = `Coloque a pessoa da imagem de referência na área branca da máscara, mantendo todas as características faciais idênticas.`;
         
-        let requestBody: Record<string, unknown>;
-        
-        if (isImagen3ServiceAccount) {
-          requestBody = {
-            instances: [
-              {
-                prompt: inpaintingPrompt,
-                baseImage: {
-                  bytesBase64Encoded: baseImageBase64.data,
-                },
-                mask: {
-                  image: {
-                    bytesBase64Encoded: maskImageBase64.data,
-                  },
-                },
-                // Imagen 3 requer contextImages para referência
-                contextImages: [
-                  {
-                    bytesBase64Encoded: friendImageBase64.data,
-                  },
-                ],
+        const requestBody = {
+          instances: [
+            {
+              prompt: minimalPrompt, // Prompt mínimo para não interferir na referência visual
+              image: {
+                bytesBase64Encoded: baseImageBase64.data,
               },
-            ],
-            parameters: {
-              sampleCount: 1,
-              editConfig: {
-                editMode: 'inpainting-insert',
-              },
-              guidanceScale: 12,
-            },
-          };
-        } else {
-          // Versões antigas do Imagen - usar prompt mínimo para priorizar referência visual
-          const minimalPrompt = `Coloque a pessoa da imagem de referência na área branca da máscara, mantendo todas as características faciais idênticas.`;
-          
-          requestBody = {
-            instances: [
-              {
-                prompt: minimalPrompt, // Prompt mínimo para não interferir na referência visual
+              mask: {
                 image: {
-                  bytesBase64Encoded: baseImageBase64.data,
-                },
-                mask: {
-                  image: {
-                    bytesBase64Encoded: maskImageBase64.data,
-                  },
-                },
-                referenceImage: {
-                  bytesBase64Encoded: friendImageBase64.data,
+                  bytesBase64Encoded: maskImageBase64.data,
                 },
               },
-            ],
-            parameters: {
-              sampleCount: 1,
-              guidanceScale: 15, // Aumentar para forçar mais fidelidade à referência
-              aspectRatio: '1:1',
+              referenceImage: {
+                bytesBase64Encoded: friendImageBase64.data,
+              },
             },
-          };
-        }
+          ],
+          parameters: {
+            sampleCount: 1,
+            guidanceScale: 15, // Aumentar para forçar mais fidelidade à referência
+            aspectRatio: '1:1',
+          },
+        };
 
         try {
           const imagenResponse = await fetch(endpoint, {
@@ -540,7 +473,17 @@ O resultado deve ser fotorrealista, como uma foto de evento político real.`;
 
           const responseData = await imagenResponse.json();
           console.log(`✅ Modelo ${modelVersion} funcionou!`);
-          console.log('📋 Resposta recebida:', JSON.stringify(responseData, null, 2).substring(0, 500)); // Log parcial para debug
+          console.log('📋 Resposta completa recebida:', JSON.stringify(responseData, null, 2));
+          console.log('📋 Tipo da resposta:', typeof responseData);
+          console.log('📋 Chaves da resposta:', Object.keys(responseData || {}));
+          
+          // Verificar se a resposta está vazia
+          if (!responseData || Object.keys(responseData).length === 0) {
+            console.error(`❌ Resposta vazia do modelo ${modelVersion}`);
+            imagenError = new Error('A resposta do Imagen está vazia. Isso pode indicar que o modelo não gerou nenhuma imagem.');
+            continue; // Tentar próxima versão
+          }
+          
           imagenData = responseData;
           break;
           

@@ -106,8 +106,20 @@ export default function Home() {
       // 5. (PRD 6.3) Tratar a resposta
       if (!response.ok) {
         // Tentar ler o JSON de erro
-        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
-        throw new Error(errorData.error || 'A API retornou um erro.');
+        let errorMessage = `Erro ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // Se não conseguir parsear JSON, tentar ler como texto
+          try {
+            const errorText = await response.text();
+            errorMessage = errorText || errorMessage;
+          } catch {
+            // Se tudo falhar, usar mensagem padrão
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       // 6. (PRD 6.3) Sucesso: Converter a imagem

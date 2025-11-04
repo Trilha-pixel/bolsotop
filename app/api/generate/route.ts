@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server';
-import {
-  GoogleGenerativeAI, // SDK do Gemini (para Análise de Visão e Geração de Imagem)
-  Part,
-} from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 // --- Configuração dos Clientes de IA ---
 // NOTA: Isso requer variáveis de ambiente em .env.local:
@@ -10,15 +7,14 @@ import {
 // ----------------------------------------------------
 
 // Cliente Gemini (para Análise de Visão e Geração de Imagem)
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
-// --- Helper para converter Arquivo (File) para a API do Google ---
-async function fileToGenerativePart(file: File): Promise<Part> {
-  const base64EncodedData = Buffer.from(await file.arrayBuffer()).toString(
-    'base64',
-  );
+// --- Helper para converter Arquivo (File) para base64 ---
+async function fileToBase64(file: File): Promise<{ data: string; mimeType: string }> {
+  const base64EncodedData = Buffer.from(await file.arrayBuffer()).toString('base64');
   return {
-    inlineData: { data: base64EncodedData, mimeType: file.type },
+    data: base64EncodedData,
+    mimeType: file.type,
   };
 }
 
@@ -42,22 +38,17 @@ export async function POST(request: Request) {
     // (Descrever a friendImage para criar o prompt de inpainting)
 
     console.log('Iniciando Etapa 1: Análise de Visão (Gemini)');
-    const friendImagePart = await fileToGenerativePart(friendImageFile);
+    const friendImageBase64 = await fileToBase64(friendImageFile);
     const visionPrompt =
       'Descreva esta pessoa em detalhes objetivos para uma IA de geração de imagem. Foque em: sexo, idade aproximada, etnia, cor e estilo do cabelo, pelos faciais (barba/bigode), óculos e quaisquer características marcantes. Seja conciso e direto. Responda apenas com a descrição.';
 
     // Tentar diferentes modelos em ordem de preferência
-    // PRIORIDADE: gemini-pro-vision (modelo especializado em visão)
     const modelsToTry = [
-      'gemini-pro-vision',     // Modelo especializado em visão (recomendado)
-      'gemini-2.0-flash-exp',  // Modelo experimental mais recente
-      'gemini-1.5-flash-002',  // Versão específica do Flash
-      'gemini-1.5-pro-002',    // Versão específica do Pro
-      'gemini-1.5-flash',      // Flash sem versão
-      'gemini-1.5-pro',        // Pro sem versão
+      'gemini-2.0-flash-exp',
+      'gemini-1.5-flash-002',
+      'gemini-1.5-pro-002',
     ];
     
-    let visionResult;
     let textPrompt = '';
     let lastError: Error | null = null;
 
@@ -65,12 +56,35 @@ export async function POST(request: Request) {
     for (const modelName of modelsToTry) {
       try {
         console.log(`🔄 Tentando modelo: ${modelName}`);
-        const model = genAI.getGenerativeModel({ model: modelName });
-        visionResult = await model.generateContent([
-          visionPrompt,
-          friendImagePart,
-        ]);
-        textPrompt = visionResult.response.text();
+        const visionResponse = await genAI.models.generateContent({
+          model: modelName,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: visionPrompt },
+                {
+                  inlineData: {
+                    data: friendImageBase64.data,
+                    mimeType: friendImageBase64.mimeType,
+                  },
+                },
+              ],
+            },
+          ],
+        });
+
+        const candidates = visionResponse.candidates || [];
+        if (candidates.length > 0) {
+          const parts = candidates[0].content?.parts || [];
+          for (const part of parts) {
+            if ('text' in part && part.text) {
+              textPrompt = part.text;
+              break;
+            }
+          }
+        }
+
         if (textPrompt && textPrompt.trim() !== '') {
           console.log(`✅ Modelo ${modelName} funcionou com sucesso!`);
           break;
@@ -101,15 +115,15 @@ export async function POST(request: Request) {
     console.log('Iniciando Etapa 2: Geração de Imagem (Gemini 2.0 Flash)');
     
     // Preparar a imagem base para usar como referência
-    const baseImagePart = await fileToGenerativePart(baseImageFile);
+    const baseImageBase64 = await fileToBase64(baseImageFile);
     
     // Criar prompt completo para o Gemini 2.0 Flash gerar a imagem
     const imageGenerationPrompt = `${finalInpaintingPrompt}. A imagem deve mostrar a pessoa descrita acima ao lado de um político em um cenário realista e profissional.`;
 
     // Tentar usar Gemini 2.0 Flash para gerar a imagem diretamente
     const imageModelsToTry = [
-      'gemini-2.0-flash-exp',
       'gemini-2.0-flash-exp-image-generation',
+      'gemini-2.0-flash-exp',
     ];
 
     let generatedImage: string | null = null;
@@ -118,24 +132,41 @@ export async function POST(request: Request) {
     for (const modelName of imageModelsToTry) {
       try {
         console.log(`🔄 Tentando gerar imagem com modelo: ${modelName}`);
-        const imageModel = genAI.getGenerativeModel({
+        
+        // Usar a mesma estrutura do app/api/image/route.ts que funciona
+        const imageResponse = await genAI.models.generateContent({
           model: modelName,
-          generationConfig: {
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: imageGenerationPrompt },
+                {
+                  inlineData: {
+                    data: baseImageBase64.data,
+                    mimeType: baseImageBase64.mimeType,
+                  },
+                },
+              ],
+            },
+          ],
+          config: {
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 40,
             responseModalities: ['Text', 'Image'],
           },
         });
 
-        const imageResponse = await imageModel.generateContent([
-          imageGenerationPrompt,
-          baseImagePart, // Incluir a imagem base como referência
-        ]);
-
         // Extrair a imagem da resposta
-        const parts = imageResponse.response.candidates?.[0]?.content?.parts || [];
-        for (const part of parts) {
-          if ('inlineData' in part && part.inlineData) {
-            generatedImage = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-            break;
+        const candidates = imageResponse.candidates || [];
+        if (candidates.length > 0) {
+          const parts = candidates[0].content?.parts || [];
+          for (const part of parts) {
+            if ('inlineData' in part && part.inlineData) {
+              generatedImage = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+              break;
+            }
           }
         }
 

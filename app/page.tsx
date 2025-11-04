@@ -5,7 +5,6 @@ import { ImageResultDisplay } from "@/components/ImageResultDisplay";
 import { Button } from "@/components/ui/button";
 import { ImageIcon, Wand2 } from "lucide-react";
 import { HistoryItem } from "@/lib/types";
-import { type PoliticalFigure } from "@/lib/utils";
 
 const loadingText = "Criando sua obra-prima...";
 

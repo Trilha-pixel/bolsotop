@@ -208,7 +208,7 @@ export async function POST(req: NextRequest) {
         }
       }
     } else {
-      console.error("No response from Gemini API", { result });
+      console.error("No response from Gemini API", { response });
       return NextResponse.json(
         { success: false, error: "No response from Gemini API" },
         { status: 500 }

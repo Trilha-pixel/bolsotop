@@ -14,10 +14,12 @@ interface ImageResultDisplayProps {
 
 export function ImageResultDisplay({
   imageUrl,
-  description,
+  description: _unused,
   onReset,
   conversationHistory = [],
 }: ImageResultDisplayProps) {
+  // description prop is kept for API compatibility but not displayed
+  void _unused;
   const [showHistory, setShowHistory] = useState(false);
 
   const handleDownload = () => {
@@ -59,6 +61,7 @@ export function ImageResultDisplay({
       </div>
 
       <div className="rounded-lg overflow-hidden bg-muted p-2 sm:p-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={imageUrl}
           alt="Generated image"
@@ -85,6 +88,7 @@ export function ImageResultDisplay({
                       {part.text && <p className="text-sm">{part.text}</p>}
                       {part.image && (
                         <div className="mt-2 overflow-hidden rounded-md">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={part.image}
                             alt={`Image shared by ${item.role}`}

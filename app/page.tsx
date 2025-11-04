@@ -4,7 +4,6 @@ import { ImageUpload } from "@/components/ImageUpload";
 import { ImageResultDisplay } from "@/components/ImageResultDisplay";
 import { Button } from "@/components/ui/button";
 import { ImageIcon, Wand2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HistoryItem } from "@/lib/types";
 import { buildComposePrompt, type PoliticalFigure, type FriendGender, SCENARIO_OPTIONS } from "@/lib/utils";
 

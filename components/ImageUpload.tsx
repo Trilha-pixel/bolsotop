@@ -55,13 +55,13 @@ export function ImageUpload({ onImageSelect, currentImage, onError }: ImageUploa
         }
         setIsLoading(false);
       };
-      reader.onerror = (error) => {
+      reader.onerror = () => {
         onError?.("Error reading file. Please try again.");
         setIsLoading(false);
       };
       reader.readAsDataURL(file);
     },
-    [onImageSelect]
+    [onImageSelect, onError]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -97,11 +97,13 @@ export function ImageUpload({ onImageSelect, currentImage, onError }: ImageUploa
           <div className="text-center sm:text-left">
             <p className="text-sm sm:text-sm font-medium text-foreground flex items-center justify-center sm:justify-start gap-2">
               <span>1. Envie a foto do seu Amigo</span>
-              <HelpCircle
-                className="w-4 h-4 text-muted-foreground cursor-help"
-                aria-label="Ajuda"
+              <span
+                className="inline-flex items-center cursor-help"
                 title="Recomendações: rosto nítido, bem iluminado, de frente ou 3/4; uma pessoa só; sem óculos escuros; fundo simples."
-              />
+                aria-label="Ajuda"
+              >
+                <HelpCircle className="w-4 h-4 text-muted-foreground" />
+              </span>
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               Tamanho máximo: 10MB
@@ -133,6 +135,7 @@ export function ImageUpload({ onImageSelect, currentImage, onError }: ImageUploa
             </Button>
           </div>
           <div className="w-full overflow-hidden rounded-lg">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={currentImage}
               alt="Selected"
